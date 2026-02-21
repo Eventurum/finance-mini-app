@@ -550,7 +550,16 @@
     // API
     // =============================================
     const API_URL = 'https://gygutdmibnvqbsdpppfp.supabase.co/functions/v1/api';
-    const API_SECRET = '363cd3bdb31fdaec189d62e62daba76ee751889dcbada67d';
+    const API_SECRET = new URLSearchParams(location.hash.slice(1)).get('secret') || '';
+
+    if (!API_SECRET) {
+        document.getElementById('loadingScreen').innerHTML = `
+            <div class="loading-error">
+                <div>Откройте через Telegram-бот</div>
+                <div style="font-size:12px;color:#8b949e;margin-top:4px">Mini App доступен только из бота</div>
+            </div>`;
+        throw new Error('No API secret');
+    }
 
     async function apiGet(action) {
         const res = await fetch(`${API_URL}?action=${action}`, {
