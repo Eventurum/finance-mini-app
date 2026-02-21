@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конверты</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 16px 12px;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        .loading-screen {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 60vh; flex-direction: column; gap: 16px;
+        }
+        .loading-screen .spinner {
+            width: 32px; height: 32px; border: 3px solid #30363d;
+            border-top-color: #58a6ff; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-screen .loading-text { color: #8b949e; font-size: 14px; }
+        .loading-error { color: #f85149; text-align: center; padding: 40px 20px; }
+        .loading-error button { margin-top: 12px; padding: 8px 20px; background: #1f6feb; color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+
+        .app-content { display: none; }
+        .app-content.loaded { display: block; }
+
+        .card {
+            background: #161b22;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .card h2 { font-size: 15px; color: #c9d1d9; margin-bottom: 14px; }
+
+        /* === Input === */
+        .income-form { display: flex; flex-direction: column; gap: 12px; }
+        .income-row { display: flex; gap: 10px; align-items: stretch; }
+        .income-row input {
+            flex: 1; padding: 12px 16px; border: 2px solid #30363d; border-radius: 10px;
+            font-size: 18px; font-family: inherit; outline: none; transition: border-color 0.2s; min-width: 0;
+            background: #0d1117; color: #c9d1d9;
+        }
+        .income-row input:focus { border-color: #58a6ff; }
+
+        .type-toggle { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 2px solid #30363d; align-self: flex-start; }
+        .type-btn {
+            padding: 8px 16px; border: none; background: #161b22; font-size: 13px; font-weight: 600;
+            font-family: inherit; cursor: pointer; color: #8b949e; transition: all 0.15s;
+        }
+        .type-btn.active { background: #1f6feb; color: #fff; }
+        .type-btn:not(.active):hover { background: #21262d; }
+
+        .btn {
+            padding: 12px 28px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600;
+            cursor: pointer; font-family: inherit; transition: all 0.15s; white-space: nowrap;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: #1f6feb; color: #fff; }
+        .btn-ghost { background: none; color: #6e7681; font-size: 12px; padding: 6px 12px; text-decoration: underline; border: none; cursor: pointer; }
+
+        /* === Result === */
+        .result-card { border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; display: none; }
+        .result-card.visible { display: block; }
+        .result-card.salary { background: #122117; border: 2px solid #1b4332; }
+        .result-card.salary h2 { color: #3fb950; }
+        .result-card.bonus { background: #1c1a0e; border: 2px solid #3d3517; }
+        .result-card.bonus h2 { color: #d29922; }
+
+        .result-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .result-item:last-child { border-bottom: none; }
+        .result-label { font-size: 14px; color: #c9d1d9; display: flex; align-items: center; gap: 8px; }
+        .result-amount { font-size: 16px; font-weight: 700; color: #3fb950; }
+        .result-note { font-size: 11px; color: #6e7681; margin-left: 4px; }
+        .result-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+        .result-separator {
+            border: none; border-top: 2px dashed #30363d; margin: 10px 0;
+        }
+
+        .result-total {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0; font-weight: 700; font-size: 14px; color: #58a6ff;
+        }
+        .result-total .stays { color: #3fb950; font-size: 16px; }
+
+        /* Bonus bar */
+        .bonus-bar { display: flex; height: 32px; border-radius: 8px; overflow: hidden; margin: 12px 0 8px; }
+        .bonus-seg { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
+        .bonus-seg.credit { background: #f85149; }
+        .bonus-seg.cushion { background: #58a6ff; }
+        .bonus-seg.fun { background: #3fb950; }
+
+        /* === Envelopes === */
+        .envelope { padding: 10px 0; border-bottom: 1px solid #21262d; }
+        .envelope:last-child { border-bottom: none; }
+        .env-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .env-name { font-size: 14px; font-weight: 500; color: #c9d1d9; display: flex; align-items: center; gap: 8px; }
+        .env-tag { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+        .env-tag.due { background: #2a1e0a; color: #d29922; }
+        .env-tag.wife { background: #261433; color: #bc8cff; }
+        .env-tag.urgent { background: #3d1014; color: #f85149; animation: pulse 1.5s infinite; }
+        .env-tag.buffer { background: #0c2d42; color: #58a6ff; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+        .env-amounts { font-size: 13px; color: #8b949e; text-align: right; }
+        .env-amounts strong { color: #c9d1d9; }
+        .env-bar-wrap { position: relative; height: 8px; background: #30363d; border-radius: 4px; overflow: hidden; }
+        .env-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+        .env-bar-schedule { position: absolute; top: 0; height: 100%; width: 2px; background: rgba(0,0,0,0.3); border-radius: 1px; }
+        .env-full .env-bar-fill { background: #3fb950; }
+        .env-partial .env-bar-fill { background: #58a6ff; }
+        .env-behind .env-bar-fill { background: #d29922; }
+        .env-empty .env-bar-fill { background: #30363d; }
+        .env-pct { font-size: 11px; font-weight: 600; margin-left: 4px; }
+
+        /* Paid state */
+        .envelope.env-paid { opacity: 0.5; }
+        .envelope.env-paid .env-name { text-decoration: line-through; color: #484f58; }
+        .envelope.env-paid .env-amounts { color: #484f58; }
+        .envelope.env-paid .env-amounts strong { color: #484f58; }
+        .env-tag.paid { background: #0f2d1a; color: #3fb950; }
+        .env-paid-btn {
+            background: none; border: 2px solid #30363d; width: 20px; height: 20px;
+            border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center;
+            justify-content: center; font-size: 13px; color: transparent; flex-shrink: 0;
+            transition: all 0.15s; padding: 0; vertical-align: middle;
+        }
+        .env-paid-btn:hover { border-color: #3fb950; }
+        .env-paid-btn.checked { background: #3fb950; border-color: #3fb950; color: #fff; }
+        .schedule-row.sched-paid .schedule-name { text-decoration: line-through; color: #484f58; }
+        .schedule-row.sched-paid .schedule-amount-col { text-decoration: line-through; color: #484f58; }
+
+        /* Wife & buffer sections */
+        .wife-section { margin-top: 6px; padding: 10px 12px; background: #1a1528; border-radius: 8px; border: 1px solid #2d2042; }
+        .wife-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #8b949e; padding: 3px 0; }
+        .wife-row strong { color: #bc8cff; }
+        .buffer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+        .buffer-card {
+            padding: 10px 12px; border-radius: 8px; border: 1px solid;
+        }
+        .buffer-card.wife-buf { background: #1a1528; border-color: #2d2042; }
+        .buffer-card.personal-buf { background: #0c2035; border-color: #163d5e; }
+        .buffer-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; margin-bottom: 4px; }
+        .buffer-card.wife-buf .buffer-label { color: #bc8cff; }
+        .buffer-card.personal-buf .buffer-label { color: #58a6ff; }
+        .buffer-amount { font-size: 18px; font-weight: 700; }
+        .buffer-card.wife-buf .buffer-amount { color: #bc8cff; }
+        .buffer-card.personal-buf .buffer-amount { color: #58a6ff; }
+        .buffer-hint { font-size: 10px; color: #6e7681; margin-top: 2px; }
+        .buffer-toggle {
+            display: inline-flex; align-items: center; gap: 6px;
+            margin-top: 6px; padding: 4px 10px; border-radius: 6px; border: 1px solid #30363d;
+            background: #161b22; cursor: pointer; font-family: inherit; font-size: 11px;
+            font-weight: 600; color: #8b949e; transition: all 0.15s; width: 100%;
+            justify-content: center;
+        }
+        .buffer-toggle:hover { border-color: #484f58; }
+        .buffer-toggle.active { background: #0f2d1a; border-color: #1b4332; color: #3fb950; }
+        .buffer-toggle.inactive { background: #3d1014; border-color: #5a1a1e; color: #f85149; }
+
+        /* Source tags in results */
+        .source-tag {
+            display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px;
+            border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; margin-left: 6px;
+        }
+        .source-tag.from-salary { background: #0f2d1a; color: #3fb950; }
+        .source-tag.from-buffer-wife { background: #261433; color: #bc8cff; }
+        .source-tag.from-buffer-self { background: #0c2d42; color: #58a6ff; }
+
+        /* === History === */
+        .history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
+        .history-item:last-child { border-bottom: none; }
+        .history-left { display: flex; align-items: center; gap: 8px; }
+        .history-date { font-size: 13px; color: #8b949e; }
+        .history-type { font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 600; text-transform: uppercase; }
+        .history-type.salary { background: #0f2d1a; color: #3fb950; }
+        .history-type.bonus { background: #2a1e0a; color: #d29922; }
+        .history-amount { font-size: 15px; font-weight: 700; color: #3fb950; }
+        .history-empty { text-align: center; padding: 16px; color: #484f58; font-size: 13px; }
+
+        .month-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .month-label { font-size: 18px; font-weight: 700; color: #58a6ff; }
+        .month-total { font-size: 13px; color: #8b949e; }
+        .month-total strong { color: #3fb950; }
+        .today-indicator { font-size: 12px; color: #8b949e; margin-bottom: 12px; }
+        .today-indicator strong { color: #58a6ff; }
+
+        .month-nav-group { display: flex; align-items: center; gap: 8px; }
+        .month-nav-btn {
+            width: 32px; height: 32px; border: 1px solid #30363d; border-radius: 6px;
+            background: #161b22; cursor: pointer; font-size: 14px; color: #58a6ff;
+            display: flex; align-items: center; justify-content: center; font-family: inherit;
+        }
+        .month-nav-btn:hover { background: #21262d; }
+        .archive-banner {
+            background: #2a1e0a; border: 1px solid #3d3517; border-radius: 8px;
+            padding: 10px 16px; margin-bottom: 12px; display: none;
+            justify-content: space-between; align-items: center; font-size: 13px; color: #d29922;
+        }
+        .archive-banner.future {
+            background: #0c2d42; border-color: #163d5e; color: #58a6ff;
+        }
+        .archive-banner button {
+            background: #1f6feb; color: #fff; border: none; border-radius: 6px;
+            padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .archive-banner button:hover { opacity: 0.85; }
+
+        /* === Dashboard grid === */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+        .dashboard-col {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .dashboard-col > .card { margin-bottom: 0; }
+        @media (max-width: 768px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+        }
+
+        /* === Settings === */
+        .settings-toggle {
+            width: 100%; padding: 16px 24px; background: #161b22; border: none; border-radius: 12px;
+            display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+            font-family: inherit; font-size: 14px; font-weight: 600; color: #c9d1d9;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); margin-bottom: 16px;
+        }
+        .settings-toggle:hover { background: #21262d; }
+        .settings-toggle .chev { font-size: 11px; color: #6e7681; transition: transform 0.2s; }
+        .settings-toggle.open .chev { transform: rotate(180deg); }
+
+        .settings-panel {
+            display: none; background: #161b22; border-radius: 12px; padding: 20px 24px;
+            margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .settings-panel.open { display: block; }
+        .settings-section { margin-bottom: 16px; }
+        .settings-section h3 { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+
+        .env-setting { display: flex; gap: 6px; align-items: center; padding: 4px 0; flex-wrap: wrap; }
+        .env-setting input, .env-setting select {
+            padding: 6px 8px; border: 2px solid #30363d; border-radius: 6px;
+            font-size: 12px; font-family: inherit; outline: none;
+            background: #0d1117; color: #c9d1d9;
+        }
+        .env-setting input:focus, .env-setting select:focus { border-color: #58a6ff; }
+        .env-setting .s-color { width: 28px; height: 28px; border: none; border-radius: 6px; cursor: pointer; padding: 0; }
+        .env-setting .s-name { flex: 1; text-align: left; min-width: 100px; }
+        .env-setting .s-amount { width: 80px; text-align: right; }
+        .env-setting .s-due { width: 50px; text-align: center; }
+        .env-setting .s-remove { background: none; border: none; color: #484f58; font-size: 18px; cursor: pointer; padding: 0 4px; }
+        .env-setting .s-remove:hover { color: #f85149; }
+
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; gap: 8px; }
+        .setting-row label { font-size: 13px; color: #c9d1d9; flex: 1; }
+        .setting-row input {
+            width: 80px; padding: 6px 8px; border: 2px solid #30363d; border-radius: 6px;
+            font-size: 12px; font-family: inherit; text-align: right; outline: none;
+            background: #0d1117; color: #c9d1d9;
+        }
+        .setting-row input:focus { border-color: #58a6ff; }
+
+        .add-env-btn {
+            width: 100%; padding: 8px; margin-top: 6px; border: 1px dashed #30363d; border-radius: 6px;
+            background: none; color: #8b949e; font-size: 12px; font-family: inherit; cursor: pointer;
+        }
+        .add-env-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+
+        .settings-header-row { display: flex; gap: 6px; padding: 0 0 4px; font-size: 10px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.3px; }
+        .sh-color { width: 28px; } .sh-name { flex: 1; text-align: left; min-width: 100px; }
+        .sh-amount { width: 80px; text-align: center; } .sh-due { width: 50px; text-align: center; } .sh-del { width: 22px; }
+
+        /* === Result sections === */
+        .result-section {
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            border-left: 4px solid;
+        }
+        .result-section.transfers {
+            background: #0f2d1a;
+            border-left-color: #3fb950;
+        }
+        .result-section.buffers {
+            background: #1a1528;
+            border-left-color: #bc8cff;
+        }
+        .result-section.savings-section {
+            background: #0c2035;
+            border-left-color: #58a6ff;
+        }
+        .result-section.personal-section {
+            background: #0f2d1a;
+            border-left-color: #3fb950;
+        }
+        .result-section-title {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .result-card.salary .result-item .result-amount { font-size: 15px; }
+
+        /* === Transfer table (result card) === */
+        .transfer-table { width: 100%; }
+        .transfer-header {
+            display: flex; align-items: center; padding: 0 0 8px;
+            font-size: 11px; color: #6e7681; text-transform: uppercase;
+            letter-spacing: 0.3px; font-weight: 600; gap: 6px;
+            border-bottom: 2px solid #30363d; margin-bottom: 4px;
+        }
+        .transfer-row {
+            display: flex; align-items: center; padding: 7px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06); gap: 6px; font-size: 13px;
+        }
+        .transfer-row:last-child { border-bottom: none; }
+        .transfer-from { min-width: 100px; color: #8b949e; font-size: 12px; font-weight: 500; }
+        .transfer-arrow { color: #484f58; font-size: 14px; flex-shrink: 0; }
+        .transfer-amount { font-weight: 700; font-size: 14px; color: #3fb950; min-width: 90px; text-align: right; }
+        .transfer-to { flex: 1; font-weight: 500; color: #c9d1d9; display: flex; align-items: center; gap: 6px; }
+        .transfer-row.buffer-row { opacity: 0.7; }
+        .transfer-row.buffer-row .transfer-from { color: #bc8cff; }
+        .transfer-row.keep-row { background: #21262d; border-radius: 6px; padding: 7px 6px; }
+
+        /* === Schedule chart === */
+        .schedule-timeline {
+            position: relative;
+            padding: 0;
+        }
+        .schedule-bar {
+            position: relative;
+            height: 4px;
+            background: #30363d;
+            border-radius: 2px;
+            margin: 40px 0 40px;
+        }
+        .schedule-today {
+            position: absolute;
+            top: -6px;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            border: 3px solid #161b22;
+            box-shadow: 0 0 0 2px #58a6ff;
+            z-index: 3;
+            transform: translateX(-50%);
+        }
+        .schedule-marker {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 2;
+            transform: translateX(-50%);
+        }
+        .schedule-marker.income {
+            bottom: 8px;
+        }
+        .schedule-marker.expense {
+            top: 8px;
+        }
+        .schedule-marker .marker-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #161b22;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .schedule-marker.income .marker-dot { background: #3fb950; }
+        .schedule-marker.expense .marker-dot { background: #f85149; }
+        .schedule-marker .marker-label {
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+            padding: 2px 5px;
+            border-radius: 4px;
+            margin: 2px 0;
+        }
+        .schedule-marker.income .marker-label { color: #3fb950; }
+        .schedule-marker.expense .marker-label { color: #f85149; }
+        .schedule-marker .marker-tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 8px 12px;
+            white-space: nowrap;
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .schedule-marker:hover .marker-tooltip { display: block; }
+        .marker-tooltip-title {
+            font-size: 11px; font-weight: 700; color: #c9d1d9; margin-bottom: 4px;
+        }
+        .marker-tooltip-row {
+            display: flex; justify-content: space-between; gap: 16px;
+            font-size: 11px; padding: 2px 0;
+        }
+        .marker-tooltip-name { color: #8b949e; }
+        .marker-tooltip-sum { color: #f85149; font-weight: 600; }
+        .schedule-marker .marker-amount {
+            font-size: 9px;
+            color: #6e7681;
+            white-space: nowrap;
+        }
+
+        .schedule-table { width: 100%; margin-top: 16px; }
+        .schedule-row {
+            display: flex;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid #21262d;
+            gap: 10px;
+        }
+        .schedule-row:last-child { border-bottom: none; }
+        .schedule-day {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .schedule-day.income-day { background: #0f2d1a; color: #3fb950; }
+        .schedule-day.expense-day { background: #3d1014; color: #f85149; }
+        .schedule-day.today-day { background: #1f6feb; color: #fff; }
+        .schedule-details { flex: 1; }
+        .schedule-name { font-size: 13px; font-weight: 500; color: #c9d1d9; }
+        .schedule-amount-col { font-size: 14px; font-weight: 700; text-align: right; white-space: nowrap; }
+        .schedule-amount-col.income-amount { color: #3fb950; }
+        .schedule-amount-col.expense-amount { color: #f85149; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Loading -->
+        <div class="loading-screen" id="loadingScreen">
+            <div class="spinner"></div>
+            <div class="loading-text">Загрузка данных...</div>
+        </div>
+
+        <!-- App -->
+        <div class="app-content" id="appContent">
+            <!-- Input -->
+            <div class="card">
+                <div class="month-bar">
+                    <div class="month-nav-group">
+                        <button class="month-nav-btn" onclick="changeMonth(-1)">&#9664;</button>
+                        <span class="month-label" id="monthLabel"></span>
+                        <button class="month-nav-btn" onclick="changeMonth(1)">&#9654;</button>
+                    </div>
+                    <span class="month-total">Получено: <strong id="monthTotal">0 &#8381;</strong></span>
+                </div>
+                <div class="archive-banner" id="archiveBanner">
+                    <span id="archiveText">Просмотр архива</span>
+                    <button onclick="goToCurrentMonth()">Текущий месяц</button>
+                </div>
+                <div class="today-indicator" id="todayIndicator"></div>
+                <div class="income-form" id="incomeForm">
+                    <div class="type-toggle">
+                        <button class="type-btn active" data-type="salary" onclick="setType('salary')">Зарплата</button>
+                        <button class="type-btn" data-type="bonus" onclick="setType('bonus')">Бонус / Премия</button>
+                    </div>
+                    <div class="income-row">
+                        <input type="number" id="incomeInput" placeholder="Сумма зарплаты">
+                        <button class="btn btn-primary" onclick="distribute()">Распределить</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result -->
+            <div class="result-card" id="resultCard">
+                <h2 id="resultTitle"></h2>
+                <div id="resultBody"></div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="dashboard-col">
+                    <!-- Envelopes -->
+                    <div class="card">
+                        <h2>Конверты на месяц</h2>
+                        <div id="envelopeList"></div>
+                    </div>
+
+                    <!-- Buffers -->
+                    <div class="card">
+                        <h2>Буферы</h2>
+                        <div id="wifeSection"></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-col">
+                    <!-- Schedule -->
+                    <div class="card">
+                        <h2>График оплат в месяце</h2>
+                        <div id="scheduleChart"></div>
+                    </div>
+
+                    <!-- History -->
+                    <div class="card">
+                        <h2>История поступлений</h2>
+                        <div id="historyList"></div>
+                        <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+                            <button class="btn-ghost" onclick="clearMonth()">Очистить поступления</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            <button class="settings-toggle" id="settingsToggle" onclick="toggleSettings()">
+                Настройки <span class="chev">&#9660;</span>
+            </button>
+            <div class="settings-panel" id="settingsPanel"></div>
+        </div>
+    </div>
+
+    <script>
+    // =============================================
+    // API
+    // =============================================
+    const API_URL = 'https://gygutdmibnvqbsdpppfp.supabase.co/functions/v1/api';
+    const API_SECRET = '363cd3bdb31fdaec189d62e62daba76ee751889dcbada67d';
+
+    async function apiGet(action) {
+        const res = await fetch(`${API_URL}?action=${action}`, {
+            headers: { 'Authorization': `Bearer ${API_SECRET}` }
+        });
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        return res.json();
+    }
+
+    async function apiPost(action, body) {
+        const res = await fetch(`${API_URL}?action=${action}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${API_SECRET}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        return res.json();
+    }
+
+    // Debounced saves
+    let _saveStateTimer = null;
+    let _saveCfgTimer = null;
+
+    function saveState(s) {
+        clearTimeout(_saveStateTimer);
+        _saveStateTimer = setTimeout(() => apiPost('save-state', s).catch(console.error), 300);
+    }
+
+    function saveCfg(c) {
+        clearTimeout(_saveCfgTimer);
+        _saveCfgTimer = setTimeout(() => apiPost('save-config', c).catch(console.error), 300);
+    }
+
+    function saveArchiveEntry(month, data) {
+        apiPost('save-archive', { month, data }).catch(console.error);
+    }
+
+    // =============================================
+    // CONFIG
+    // =============================================
+    const DEFAULT_ENVELOPES = [
+        { id: 'vpn',       name: 'VPN-сервер',  target: 1000,  color: '#d29922', dueDay: 1 },
+        { id: 'phone',     name: 'Связь',       target: 800,   color: '#d29922', dueDay: 15 },
+        { id: 'rent',      name: 'Квартира',    target: 25000, color: '#d29922', dueDay: 24 },
+        { id: 'utilities', name: 'Коммуналка',  target: 6000,  color: '#d29922', dueDay: 24 },
+        { id: 'credit',    name: 'Компьютер',   target: 23549, color: '#f85149', dueDay: 25 },
+        { id: 'transport', name: 'Проезд',      target: 1700,  color: '#d29922', dueDay: 0 },
+        { id: 'cat',       name: 'Корм коту',   target: 4000,  color: '#d29922', dueDay: 0 },
+    ];
+
+    const DEFAULT_CFG = {
+        envelopes: DEFAULT_ENVELOPES.map(e => ({ ...e })),
+        wifePerPayment: 15000,
+        personalPerPayment: 10000,
+        bonusSplit: { credit: 50, cushion: 30, fun: 20 },
+    };
+
+    function freshState() {
+        const n = new Date();
+        return {
+            month: n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'),
+            filled: {},
+            paid: {},
+            wifeBuffer: 0,
+            wifePaid: 0,
+            wifePayments: 0,
+            personalBuffer: 0,
+            personalPaid: 0,
+            personalPayments: 0,
+            _savedWifeBuffer: 0,
+            _savedPersonalBuffer: 0,
+            history: [],
+        };
+    }
+
+    let cfg, st, archive;
+    let currentMonthSt = null; // keep reference to current month state
+    let incomeType = 'salary';
+
+    const curMonth = (() => { const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'); })();
+    let viewMonth = curMonth;
+
+    // =============================================
+    // HELPERS
+    // =============================================
+    const fmt = n => Math.round(n).toLocaleString('ru-RU');
+    const today = () => new Date().getDate();
+    const daysInMonth = () => { const [y,m] = viewMonth.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+    function monthName(ms) {
+        const nm = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        const [y,m] = ms.split('-'); return nm[parseInt(m)-1] + ' ' + y;
+    }
+    function nowStr() {
+        const n = new Date();
+        return n.getDate().toString().padStart(2,'0') + '.' + (n.getMonth()+1).toString().padStart(2,'0') + '.' + n.getFullYear()
+            + ' ' + n.getHours().toString().padStart(2,'0') + ':' + n.getMinutes().toString().padStart(2,'0');
+    }
+
+    function scheduleTarget(env, day) {
+        const dim = daysInMonth();
+        if (env.dueDay > 0) {
+            if (day >= env.dueDay) return env.target;
+            return Math.round(env.target * day / env.dueDay);
+        }
+        return Math.round(env.target * day / dim);
+    }
+
+    function isPaid(env) {
+        if (st.paid[env.id] !== undefined) return st.paid[env.id];
+        if (viewMonth === curMonth && env.dueDay > 0 && today() > env.dueDay) return true;
+        return false;
+    }
+
+    function togglePaid(envId) {
+        const env = cfg.envelopes.find(e => e.id === envId);
+        if (!env) return;
+        const cur = isPaid(env);
+        st.paid[envId] = !cur;
+        if (viewMonth === curMonth) {
+            saveState(st);
+        } else {
+            archive[viewMonth] = st;
+            saveArchiveEntry(viewMonth, st);
+        }
+        renderAll();
+    }
+
+    function toggleBufferExists(type) {
+        if (type === 'wife') {
+            if (st.wifeBuffer > 0) {
+                st._savedWifeBuffer = st.wifeBuffer;
+                st.wifeBuffer = 0;
+            } else if (st._savedWifeBuffer > 0) {
+                st.wifeBuffer = st._savedWifeBuffer;
+                st._savedWifeBuffer = 0;
+            }
+        } else {
+            if (st.personalBuffer > 0) {
+                st._savedPersonalBuffer = st.personalBuffer;
+                st.personalBuffer = 0;
+            } else if (st._savedPersonalBuffer > 0) {
+                st.personalBuffer = st._savedPersonalBuffer;
+                st._savedPersonalBuffer = 0;
+            }
+        }
+        if (viewMonth === curMonth) saveState(st);
+        else { archive[viewMonth] = st; saveArchiveEntry(viewMonth, st); }
+        renderAll();
+    }
+
+    // =============================================
+    // MONTH NAVIGATION
+    // =============================================
+    function changeMonth(delta) {
+        // Save current month state before navigating away
+        if (viewMonth === curMonth) currentMonthSt = st;
+
+        const [y, m] = viewMonth.split('-').map(Number);
+        const d = new Date(y, m - 1 + delta, 1);
+        viewMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+
+        if (viewMonth === curMonth) {
+            st = currentMonthSt || freshState();
+        } else if (archive[viewMonth]) {
+            st = archive[viewMonth];
+        } else {
+            st = freshState();
+            st.month = viewMonth;
+        }
+
+        document.getElementById('resultCard').className = 'result-card';
+        renderAll();
+    }
+
+    function goToCurrentMonth() {
+        if (viewMonth === curMonth) return;
+        viewMonth = curMonth;
+        st = currentMonthSt || freshState();
+        document.getElementById('resultCard').className = 'result-card';
+        renderAll();
+    }
+
+    // =============================================
+    // SALARY DISTRIBUTION ALGORITHM
+    // =============================================
+    function distributeSalary(amount) {
+        const result = {};
+        let pool = amount;
+        const wpp = cfg.wifePerPayment;
+        const ppp = cfg.personalPerPayment;
+
+        // --- Step 1: Katya ---
+        let wifeFromBuffer = 0;
+        let wifeFromIncome = 0;
+
+        if (st.wifeBuffer >= wpp) {
+            wifeFromBuffer = wpp;
+        } else if (st.wifeBuffer > 0) {
+            wifeFromBuffer = st.wifeBuffer;
+            wifeFromIncome = Math.min(wpp - wifeFromBuffer, pool);
+            pool -= wifeFromIncome;
+        } else {
+            wifeFromIncome = Math.min(wpp, pool);
+            pool -= wifeFromIncome;
+        }
+
+        result._wife = wifeFromBuffer + wifeFromIncome;
+        result._wifeFromBuffer = wifeFromBuffer;
+        result._wifeFromIncome = wifeFromIncome;
+
+        // --- Step 2: Personal spending ---
+        let personalFromBuffer = 0;
+        let personalFromIncome = 0;
+
+        if (st.personalBuffer >= ppp) {
+            personalFromBuffer = ppp;
+        } else if (st.personalBuffer > 0) {
+            personalFromBuffer = st.personalBuffer;
+            personalFromIncome = Math.min(ppp - personalFromBuffer, pool);
+            pool -= personalFromIncome;
+        } else {
+            personalFromIncome = Math.min(ppp, pool);
+            pool -= personalFromIncome;
+        }
+
+        result._personal = personalFromBuffer + personalFromIncome;
+        result._personalFromBuffer = personalFromBuffer;
+        result._personalFromIncome = personalFromIncome;
+
+        // --- Step 3: Envelopes by urgency ---
+        const d = today();
+        const items = cfg.envelopes.filter(env => !isPaid(env)).map(env => {
+            const filled = st.filled[env.id] || 0;
+            const sched = scheduleTarget(env, d);
+            const deficit = Math.max(0, sched - filled);
+            const remaining = Math.max(0, env.target - filled);
+            return { id: env.id, deficit, remaining };
+        });
+
+        // Phase A: fill deficits
+        const totalDeficit = items.reduce((s,i) => s + i.deficit, 0);
+        if (totalDeficit > 0 && pool > 0) {
+            const budget = Math.min(pool, totalDeficit);
+            items.forEach(it => {
+                if (it.deficit > 0) {
+                    const give = Math.min(Math.round(budget * it.deficit / totalDeficit), it.remaining, pool);
+                    result[it.id] = (result[it.id] || 0) + give;
+                    it.remaining -= give;
+                    pool -= give;
+                }
+            });
+        }
+
+        // Phase B: fill remaining needs
+        const totalNeed = items.reduce((s,i) => s + i.remaining, 0);
+        if (totalNeed > 0 && pool > 0) {
+            const budget = Math.min(pool, totalNeed);
+            items.forEach(it => {
+                if (it.remaining > 0) {
+                    const give = Math.min(Math.round(budget * it.remaining / totalNeed), it.remaining, pool);
+                    result[it.id] = (result[it.id] || 0) + give;
+                    it.remaining -= give;
+                    pool -= give;
+                }
+            });
+            if (pool > 0) {
+                const big = items.filter(i => i.remaining > 0).sort((a,b) => b.remaining - a.remaining)[0];
+                if (big) { const g = Math.min(pool, big.remaining); result[big.id] = (result[big.id]||0) + g; pool -= g; }
+            }
+        }
+
+        // --- Step 4: Pre-fund wife buffer ---
+        let newWifeBuffer = 0;
+        if (pool > 0) {
+            const bufferNeed = wpp - (st.wifeBuffer - wifeFromBuffer);
+            if (bufferNeed > 0) {
+                newWifeBuffer = Math.min(pool, bufferNeed);
+                pool -= newWifeBuffer;
+            }
+        }
+        result._newWifeBuffer = newWifeBuffer;
+
+        // --- Step 5: Pre-fund personal buffer ---
+        let newPersonalBuffer = 0;
+        if (pool > 0) {
+            const bufferNeed = ppp - (st.personalBuffer - personalFromBuffer);
+            if (bufferNeed > 0) {
+                newPersonalBuffer = Math.min(pool, bufferNeed);
+                pool -= newPersonalBuffer;
+            }
+        }
+        result._newPersonalBuffer = newPersonalBuffer;
+
+        // --- Step 6: Savings ---
+        result._savings = Math.max(0, pool);
+
+        return result;
+    }
+
+    function distributBonus(amount) {
+        const sp = cfg.bonusSplit;
+        const total = sp.credit + sp.cushion + sp.fun;
+        const cr = Math.round(amount * sp.credit / total);
+        const cu = Math.round(amount * sp.cushion / total);
+        return { credit: cr, cushion: cu, fun: amount - cr - cu };
+    }
+
+    // =============================================
+    // ACTIONS
+    // =============================================
+    function setType(t) {
+        incomeType = t;
+        document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+        document.getElementById('incomeInput').placeholder = t === 'salary' ? 'Сумма зарплаты' : 'Сумма бонуса / премии';
+    }
+
+    function distribute() {
+        if (viewMonth !== curMonth) return;
+        const input = document.getElementById('incomeInput');
+        const amount = Math.round(parseFloat(input.value) || 0);
+        if (amount <= 0) { input.focus(); return; }
+
+        if (incomeType === 'salary') {
+            const dist = distributeSalary(amount);
+
+            cfg.envelopes.forEach(env => {
+                if (dist[env.id]) st.filled[env.id] = (st.filled[env.id] || 0) + dist[env.id];
+            });
+
+            st.wifeBuffer = st.wifeBuffer - dist._wifeFromBuffer + dist._newWifeBuffer;
+            st.wifePaid += dist._wife;
+            st.wifePayments += 1;
+
+            st.personalBuffer = st.personalBuffer - dist._personalFromBuffer + dist._newPersonalBuffer;
+            st.personalPaid += dist._personal;
+            st.personalPayments += 1;
+
+            st._savedWifeBuffer = 0;
+            st._savedPersonalBuffer = 0;
+
+            st.history.push({ date: nowStr(), amount, type: 'salary', dist: { ...dist } });
+            saveState(st);
+            showSalaryResult(amount, dist);
+        } else {
+            const dist = distributBonus(amount);
+            st.history.push({ date: nowStr(), amount, type: 'bonus', dist });
+            saveState(st);
+            showBonusResult(amount, dist);
+        }
+
+        input.value = '';
+        renderAll();
+    }
+
+    function showSalaryResult(amount, dist) {
+        const card = document.getElementById('resultCard');
+        card.className = 'result-card visible salary';
+        document.getElementById('resultTitle').textContent = `Распределение ${fmt(amount)} \u20BD:`;
+
+        const transfers = [];
+
+        if (dist._wifeFromBuffer > 0) {
+            transfers.push({ from: 'Буфер Кати', amount: dist._wifeFromBuffer, to: 'Кате', color: '#9b59b6', type: 'buffer' });
+        }
+        if (dist._wifeFromIncome > 0) {
+            transfers.push({ from: 'Карта', amount: dist._wifeFromIncome, to: 'Кате', color: '#9b59b6', type: 'transfer' });
+        }
+
+        if (dist._personalFromBuffer > 0) {
+            transfers.push({ from: 'Буфер свой', amount: dist._personalFromBuffer, to: 'Себе (личные)', color: '#3fb950', type: 'buffer' });
+        }
+        if (dist._personalFromIncome > 0) {
+            transfers.push({ from: 'Карта', amount: dist._personalFromIncome, to: 'Себе (личные)', color: '#3fb950', type: 'transfer' });
+        }
+
+        cfg.envelopes.forEach(env => {
+            const val = dist[env.id] || 0;
+            if (val > 0) {
+                transfers.push({ from: 'Карта', amount: val, to: env.name, color: env.color, type: 'transfer' });
+            }
+        });
+
+        if (dist._newWifeBuffer > 0) {
+            transfers.push({ from: 'Карта', amount: dist._newWifeBuffer, to: 'Буфер Кати', color: '#bc8cff', type: 'keep', note: 'оставить на карте' });
+        }
+
+        if (dist._newPersonalBuffer > 0) {
+            transfers.push({ from: 'Карта', amount: dist._newPersonalBuffer, to: 'Буфер свой', color: '#58a6ff', type: 'keep', note: 'оставить на карте' });
+        }
+
+        if (dist._savings > 0) {
+            transfers.push({ from: 'Карта', amount: dist._savings, to: 'Подушка безопасности', color: '#58a6ff', type: 'transfer' });
+        }
+
+        let html = '<div class="transfer-table">';
+        html += `<div class="transfer-header">
+            <span class="transfer-from">Откуда</span>
+            <span class="transfer-arrow"></span>
+            <span class="transfer-amount">Сколько</span>
+            <span class="transfer-arrow"></span>
+            <span class="transfer-to">Куда</span>
+        </div>`;
+
+        transfers.forEach(t => {
+            const noteHtml = t.note ? ` <span class="result-note">(${t.note})</span>` : '';
+            const rowClass = t.type === 'buffer' ? ' buffer-row' : (t.type === 'keep' ? ' keep-row' : '');
+            html += `<div class="transfer-row${rowClass}">
+                <span class="transfer-from">${t.from}</span>
+                <span class="transfer-arrow">\u2192</span>
+                <span class="transfer-amount">${fmt(t.amount)} \u20BD</span>
+                <span class="transfer-arrow">\u2192</span>
+                <span class="transfer-to"><span class="result-dot" style="background:${t.color}"></span>${t.to}${noteHtml}</span>
+            </div>`;
+        });
+
+        const totalFromCard = transfers.filter(t => t.from === 'Карта').reduce((s, t) => s + t.amount, 0);
+        html += `<div class="transfer-row" style="border-top:2px solid #30363d;margin-top:4px;padding-top:10px;font-weight:700">
+            <span class="transfer-from" style="color:#c9d1d9">Итого с карты</span>
+            <span class="transfer-arrow"></span>
+            <span class="transfer-amount" style="font-size:15px">${fmt(totalFromCard)} \u20BD</span>
+            <span class="transfer-arrow"></span>
+            <span class="transfer-to"></span>
+        </div>`;
+
+        html += '</div>';
+
+        document.getElementById('resultBody').innerHTML = html;
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showBonusResult(amount, dist) {
+        const card = document.getElementById('resultCard');
+        card.className = 'result-card visible bonus';
+        document.getElementById('resultTitle').textContent = `Бонус ${fmt(amount)} \u20BD:`;
+        const sp = cfg.bonusSplit;
+        document.getElementById('resultBody').innerHTML = `
+            <div class="bonus-bar">
+                <div class="bonus-seg credit" style="flex:${sp.credit}">${fmt(dist.credit)}</div>
+                <div class="bonus-seg cushion" style="flex:${sp.cushion}">${fmt(dist.cushion)}</div>
+                <div class="bonus-seg fun" style="flex:${sp.fun}">${fmt(dist.fun)}</div>
+            </div>
+            <div class="result-item"><span class="result-label"><span class="result-dot" style="background:#f85149"></span>Досрочно компьютер (${sp.credit}%)</span><span class="result-amount" style="color:#f85149">${fmt(dist.credit)} \u20BD</span></div>
+            <div class="result-item"><span class="result-label"><span class="result-dot" style="background:#58a6ff"></span>Фин. подушка (${sp.cushion}%)</span><span class="result-amount" style="color:#58a6ff">${fmt(dist.cushion)} \u20BD</span></div>
+            <div class="result-item"><span class="result-label"><span class="result-dot" style="background:#3fb950"></span>Развлечения (${sp.fun}%)</span><span class="result-amount" style="color:#3fb950">${fmt(dist.fun)} \u20BD</span></div>
+        `;
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function clearMonth() {
+        if (viewMonth !== curMonth) return;
+        if (!confirm('Очистить все поступления текущего месяца? Конверты обнулятся, буферы сохранятся.')) return;
+
+        const keepWifeBuffer = st.wifeBuffer;
+        const keepPersonalBuffer = st.personalBuffer;
+        st = freshState();
+        st.wifeBuffer = keepWifeBuffer;
+        st.personalBuffer = keepPersonalBuffer;
+        saveState(st);
+        document.getElementById('resultCard').className = 'result-card';
+        renderAll();
+    }
+
+    // =============================================
+    // RENDERING
+    // =============================================
+    function renderEnvelopes() {
+        const el = document.getElementById('envelopeList');
+        const d = today();
+        const dim = daysInMonth();
+        let html = '';
+
+        cfg.envelopes.forEach(env => {
+            const filled = st.filled[env.id] || 0;
+            const target = env.target;
+            const pct = target > 0 ? Math.min(100, Math.round(filled / target * 100)) : 0;
+            const sched = scheduleTarget(env, d);
+            const schedPct = target > 0 ? Math.min(100, Math.round(sched / target * 100)) : 0;
+            const behind = filled < sched && pct < 100;
+            const cls = pct >= 100 ? 'env-full' : (behind ? 'env-behind' : (pct > 0 ? 'env-partial' : 'env-empty'));
+
+            const paid = isPaid(env);
+            let tag = '';
+            if (paid) {
+                tag = `<span class="env-tag paid">Оплачено</span>`;
+            } else if (env.dueDay > 0) {
+                const dLeft = env.dueDay >= d ? env.dueDay - d : env.dueDay + dim - d;
+                if (dLeft <= 3 && pct < 100) tag = `<span class="env-tag urgent">${env.dueDay}-е (${dLeft} дн!)</span>`;
+                else tag = `<span class="env-tag due">до ${env.dueDay}-го</span>`;
+            }
+
+            html += `<div class="envelope ${cls}${paid ? ' env-paid' : ''}">
+                <div class="env-header">
+                    <span class="env-name"><span class="result-dot" style="background:${env.color}"></span>${env.name} ${tag}</span>
+                    <span class="env-amounts"><strong>${fmt(filled)}</strong> / ${fmt(target)} \u20BD
+                        <span class="env-pct" style="color:${pct>=100?'#3fb950':(behind?'#d29922':'#58a6ff')}">${pct}%</span>
+                    </span>
+                </div>
+                <div class="env-bar-wrap">
+                    <div class="env-bar-fill" style="width:${pct}%;background:${env.color}"></div>
+                    ${schedPct > 0 && schedPct < 100 ? `<div class="env-bar-schedule" style="left:${schedPct}%" title="Ожидаемое к ${d}-му числу"></div>` : ''}
+                </div>
+            </div>`;
+        });
+
+        const totalSavings = st.history.filter(h => h.type === 'salary').reduce((s,h) => s + (h.dist._savings || 0), 0);
+        html += `<div class="envelope env-full">
+            <div class="env-header">
+                <span class="env-name"><span class="result-dot" style="background:#58a6ff"></span>Подушка безопасности</span>
+                <span class="env-amounts"><strong>${fmt(totalSavings)} \u20BD</strong></span>
+            </div>
+            <div class="env-bar-wrap">
+                <div class="env-bar-fill" style="width:100%;background:#58a6ff;opacity:${totalSavings>0?0.5:0.1}"></div>
+            </div>
+        </div>`;
+
+        el.innerHTML = html;
+
+        const totalRcv = st.history.reduce((s,h) => s + h.amount, 0);
+        document.getElementById('monthTotal').innerHTML = `${fmt(totalRcv)} \u20BD`;
+        document.getElementById('monthLabel').textContent = monthName(viewMonth);
+
+        const isOtherMonth = viewMonth !== curMonth;
+        const banner = document.getElementById('archiveBanner');
+        banner.style.display = isOtherMonth ? 'flex' : 'none';
+        document.getElementById('incomeForm').style.display = isOtherMonth ? 'none' : '';
+        if (isOtherMonth) {
+            const [vy, vm] = viewMonth.split('-').map(Number);
+            const [cy, cm] = curMonth.split('-').map(Number);
+            const isFuture = vy > cy || (vy === cy && vm > cm);
+            banner.className = 'archive-banner ' + (isFuture ? 'future' : '');
+            document.getElementById('archiveText').textContent = isFuture
+                ? 'Будущий месяц'
+                : 'Просмотр архива';
+            document.getElementById('todayIndicator').innerHTML = isFuture
+                ? `<span style="color:#58a6ff">${monthName(viewMonth)} — планирование</span>`
+                : `<span style="color:#d29922">Архив — ${monthName(viewMonth)}</span>`;
+        } else {
+            banner.className = 'archive-banner';
+            document.getElementById('todayIndicator').innerHTML = `Сегодня: <strong>${d} число</strong> (день ${d} из ${dim})`;
+        }
+    }
+
+    function renderWife() {
+        const el = document.getElementById('wifeSection');
+        const wpp = cfg.wifePerPayment;
+        const ppp = cfg.personalPerPayment;
+        const monthlyTarget = wpp * 2;
+        const paid = st.wifePaid;
+        const wifeBuf = st.wifeBuffer;
+        const personalBuf = st.personalBuffer;
+        const payments = st.wifePayments;
+
+        el.innerHTML = `
+            <div class="wife-section">
+                <div class="wife-row">
+                    <span>Кате: 2 × ${fmt(wpp)} = ${fmt(monthlyTarget)} / мес</span>
+                    <strong>${fmt(paid)} / ${fmt(monthlyTarget)} \u20BD (${payments} из 2)</strong>
+                </div>
+                <div style="margin-top:6px">
+                    <div class="env-bar-wrap" style="height:8px">
+                        <div class="env-bar-fill" style="width:${Math.min(100,Math.round(paid/monthlyTarget*100))}%;background:#bc8cff"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="wife-section" style="background:#0f2d1a;border-color:#1b4332;margin-top:8px">
+                <div class="wife-row">
+                    <span>Себе: 2 × ${fmt(ppp)} = ${fmt(ppp * 2)} / мес</span>
+                    <strong style="color:#3fb950">${fmt(st.personalPaid)} / ${fmt(ppp * 2)} \u20BD (${st.personalPayments} из 2)</strong>
+                </div>
+                <div style="margin-top:6px">
+                    <div class="env-bar-wrap" style="height:8px">
+                        <div class="env-bar-fill" style="width:${Math.min(100,Math.round(st.personalPaid/(ppp*2)*100))}%;background:#3fb950"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="buffer-grid">
+                <div class="buffer-card wife-buf">
+                    <div class="buffer-label">Буфер для Кати</div>
+                    <div class="buffer-amount">${wifeBuf > 0 ? fmt(wifeBuf) : (st._savedWifeBuffer||0) > 0 ? '<s style="color:#484f58">' + fmt(st._savedWifeBuffer) + '</s> 0' : '0'} \u20BD</div>
+                    <div class="buffer-hint">${wifeBuf >= wpp ? 'Готов — след. раз из буфера' : wifeBuf > 0 ? 'Частично — доберётся из ЗП' : (st._savedWifeBuffer||0) > 0 ? 'Деньги потрачены — возьмётся из ЗП' : 'Пуст — возьмётся из ЗП'}</div>
+                    ${(wifeBuf > 0 || (st._savedWifeBuffer||0) > 0) ? `<button class="buffer-toggle ${wifeBuf > 0 ? 'active' : 'inactive'}" onclick="toggleBufferExists('wife')">
+                        ${wifeBuf > 0 ? '✓ Деньги на месте' : '✗ Деньги потрачены — вернуть'}
+                    </button>` : ''}
+                </div>
+                <div class="buffer-card personal-buf">
+                    <div class="buffer-label">Буфер для себя</div>
+                    <div class="buffer-amount">${personalBuf > 0 ? fmt(personalBuf) : (st._savedPersonalBuffer||0) > 0 ? '<s style="color:#484f58">' + fmt(st._savedPersonalBuffer) + '</s> 0' : '0'} \u20BD</div>
+                    <div class="buffer-hint">${personalBuf >= ppp ? 'Готов — след. раз из буфера' : personalBuf > 0 ? 'Частично — доберётся из ЗП' : (st._savedPersonalBuffer||0) > 0 ? 'Деньги потрачены — возьмётся из ЗП' : 'Пуст — возьмётся из ЗП'}</div>
+                    ${(personalBuf > 0 || (st._savedPersonalBuffer||0) > 0) ? `<button class="buffer-toggle ${personalBuf > 0 ? 'active' : 'inactive'}" onclick="toggleBufferExists('personal')">
+                        ${personalBuf > 0 ? '✓ Деньги на месте' : '✗ Деньги потрачены — вернуть'}
+                    </button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderHistory() {
+        const el = document.getElementById('historyList');
+        if (st.history.length === 0) { el.innerHTML = '<div class="history-empty">Поступлений пока нет</div>'; return; }
+
+        let html = '';
+        [...st.history].reverse().forEach(h => {
+            const cls = h.type === 'bonus' ? 'bonus' : 'salary';
+            const lbl = h.type === 'bonus' ? 'бонус' : 'зп';
+
+            let details = '';
+            if (h.type === 'salary') {
+                const parts = [];
+                if (h.dist._wife) parts.push(`Кате: ${fmt(h.dist._wife)}`);
+                cfg.envelopes.forEach(e => { if (h.dist[e.id]) parts.push(`${e.name}: ${fmt(h.dist[e.id])}`); });
+                if (h.dist._personal) parts.push(`Себе: ${fmt(h.dist._personal)}`);
+                if (h.dist._newWifeBuffer) parts.push(`Буфер Кате: ${fmt(h.dist._newWifeBuffer)}`);
+                if (h.dist._newPersonalBuffer) parts.push(`Буфер себе: ${fmt(h.dist._newPersonalBuffer)}`);
+                if (h.dist._savings) parts.push(`Копилка: ${fmt(h.dist._savings)}`);
+                details = parts.join(', ');
+            } else {
+                details = `Компьютер: ${fmt(h.dist.credit)}, Подушка: ${fmt(h.dist.cushion)}, Развл.: ${fmt(h.dist.fun)}`;
+            }
+
+            html += `<div class="history-item" title="${details}">
+                <div class="history-left"><span class="history-date">${h.date}</span><span class="history-type ${cls}">${lbl}</span></div>
+                <span class="history-amount">+${fmt(h.amount)} \u20BD</span>
+            </div>`;
+        });
+        el.innerHTML = html;
+    }
+
+    // =============================================
+    // SCHEDULE CHART
+    // =============================================
+    function renderSchedule() {
+        const el = document.getElementById('scheduleChart');
+        const d = today();
+        const dim = daysInMonth();
+
+        const events = [];
+        cfg.envelopes.forEach(env => {
+            if (env.dueDay > 0) {
+                events.push({ day: env.dueDay, name: env.name, amount: env.target, color: env.color, id: env.id });
+            } else {
+                events.push({ day: 0, name: env.name, amount: env.target, color: env.color, spread: true, id: env.id });
+            }
+        });
+
+        const fixed = events.filter(e => e.day > 0).sort((a, b) => a.day - b.day);
+        const spread = events.filter(e => e.day === 0);
+
+        const groups = {};
+        fixed.forEach(e => {
+            if (!groups[e.day]) groups[e.day] = [];
+            groups[e.day].push(e);
+        });
+
+        let html = '';
+
+        html += `<div class="schedule-timeline"><div class="schedule-bar">`;
+        if (viewMonth === curMonth) {
+            const todayPct = ((d - 1) / (dim - 1)) * 100;
+            html += `<div class="schedule-today" style="left:${todayPct}%" title="Сегодня: ${d}"></div>`;
+        }
+
+        const markerDays = [...new Set(fixed.map(e => e.day))];
+        markerDays.forEach(day => {
+            const pct = ((day - 1) / (dim - 1)) * 100;
+            const dayItems = groups[day];
+            const tooltipRows = dayItems.map(e => `<div class="marker-tooltip-row"><span class="marker-tooltip-name">${e.name}</span><span class="marker-tooltip-sum">${fmt(e.amount)} \u20BD</span></div>`).join('');
+            html += `<div class="schedule-marker expense" style="left:${pct}%;top:8px;">
+                <div class="marker-dot"></div>
+                <div class="marker-label">${day}</div>
+                <div class="marker-tooltip">
+                    <div class="marker-tooltip-title">${day} число</div>
+                    ${tooltipRows}
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+
+        html += `<div class="schedule-table">`;
+
+        Object.keys(groups).sort((a,b) => +a - +b).forEach(day => {
+            const dayEvents = groups[day];
+            dayEvents.forEach(e => {
+                const isToday = +day === d;
+                const env = cfg.envelopes.find(en => en.id === e.id);
+                const paid = env ? isPaid(env) : false;
+                html += `<div class="schedule-row${paid ? ' sched-paid' : ''}">
+                    <div class="schedule-day ${isToday ? 'today-day' : 'expense-day'}">${day}</div>
+                    <div class="schedule-details"><span class="schedule-name"><button class="env-paid-btn${paid ? ' checked' : ''}" onclick="togglePaid('${e.id}')" style="width:18px;height:18px;font-size:11px">${paid ? '✓' : ''}</button><span class="result-dot" style="background:${e.color}"></span> ${e.name}${paid ? ' <span class="env-tag paid">Оплачено</span>' : ''}</span></div>
+                    <div class="schedule-amount-col expense-amount">${fmt(e.amount)} \u20BD</div>
+                </div>`;
+            });
+        });
+
+        if (spread.length > 0) {
+            spread.forEach(e => {
+                const env = cfg.envelopes.find(en => en.id === e.id);
+                const paid = env ? isPaid(env) : false;
+                html += `<div class="schedule-row${paid ? ' sched-paid' : ''}">
+                    <div class="schedule-day expense-day" style="font-size:10px;line-height:1.1">1-${dim}</div>
+                    <div class="schedule-details"><span class="schedule-name"><button class="env-paid-btn${paid ? ' checked' : ''}" onclick="togglePaid('${e.id}')" style="width:18px;height:18px;font-size:11px">${paid ? '✓' : ''}</button><span class="result-dot" style="background:${e.color}"></span> ${e.name}${paid ? ' <span class="env-tag paid">Оплачено</span>' : ''}</span></div>
+                    <div class="schedule-amount-col expense-amount">${fmt(e.amount)} \u20BD</div>
+                </div>`;
+            });
+        }
+
+        const wBuf = st.wifeBuffer;
+        const wSaved = st._savedWifeBuffer || 0;
+        const pBuf = st.personalBuffer;
+        const pSaved = st._savedPersonalBuffer || 0;
+
+        if (wBuf > 0 || wSaved > 0) {
+            const active = wBuf > 0;
+            const amount = active ? wBuf : wSaved;
+            html += `<div class="schedule-row${!active ? ' sched-paid' : ''}">
+                <div class="schedule-day" style="background:#1a1528;color:#bc8cff;font-size:9px;line-height:1.1">БУФ</div>
+                <div class="schedule-details"><span class="schedule-name"><button class="env-paid-btn${active ? ' checked' : ''}" onclick="toggleBufferExists('wife')" style="width:18px;height:18px;font-size:11px">${active ? '✓' : ''}</button><span class="result-dot" style="background:#bc8cff"></span> Буфер Кати${!active ? ' <span class="env-tag" style="background:#3d1014;color:#f85149">Нет денег</span>' : ' <span class="env-tag paid">Есть</span>'}</span></div>
+                <div class="schedule-amount-col" style="color:#bc8cff">${fmt(amount)} \u20BD</div>
+            </div>`;
+        }
+
+        if (pBuf > 0 || pSaved > 0) {
+            const active = pBuf > 0;
+            const amount = active ? pBuf : pSaved;
+            html += `<div class="schedule-row${!active ? ' sched-paid' : ''}">
+                <div class="schedule-day" style="background:#0c2035;color:#58a6ff;font-size:9px;line-height:1.1">БУФ</div>
+                <div class="schedule-details"><span class="schedule-name"><button class="env-paid-btn${active ? ' checked' : ''}" onclick="toggleBufferExists('personal')" style="width:18px;height:18px;font-size:11px">${active ? '✓' : ''}</button><span class="result-dot" style="background:#58a6ff"></span> Буфер свой${!active ? ' <span class="env-tag" style="background:#3d1014;color:#f85149">Нет денег</span>' : ' <span class="env-tag paid">Есть</span>'}</span></div>
+                <div class="schedule-amount-col" style="color:#58a6ff">${fmt(amount)} \u20BD</div>
+            </div>`;
+        }
+
+        const totalOut = events.reduce((s,e) => s + e.amount, 0);
+        html += `<div class="schedule-row" style="border-top:2px solid #30363d;margin-top:4px;padding-top:10px">
+            <div class="schedule-day" style="background:#21262d;font-size:10px;line-height:1.1;color:#8b949e">&#8721;</div>
+            <div class="schedule-details"><span class="schedule-name" style="font-weight:700;color:#c9d1d9">Всего расходов в месяц</span></div>
+            <div class="schedule-amount-col expense-amount" style="font-size:15px">${fmt(totalOut)} \u20BD</div>
+        </div>`;
+
+        html += `</div>`;
+        el.innerHTML = html;
+    }
+
+    // =============================================
+    // SETTINGS
+    // =============================================
+    function toggleSettings() {
+        const p = document.getElementById('settingsPanel');
+        const t = document.getElementById('settingsToggle');
+        const open = p.classList.toggle('open');
+        t.classList.toggle('open', open);
+        if (open) renderSettings();
+    }
+
+    function renderSettings() {
+        const p = document.getElementById('settingsPanel');
+        let rows = '';
+        cfg.envelopes.forEach((env, i) => {
+            rows += `<div class="env-setting">
+                <input type="color" class="s-color" value="${env.color}" onchange="ue(${i},'color',this.value)">
+                <input class="s-name" value="${env.name}" onchange="ue(${i},'name',this.value)">
+                <input type="number" class="s-amount" value="${env.target}" onchange="ue(${i},'target',this.value)">
+                <input type="number" class="s-due" value="${env.dueDay||''}" placeholder="—" min="0" max="31" onchange="ue(${i},'dueDay',this.value)" title="Число месяца оплаты (0=нет)">
+                <button class="s-remove" onclick="re(${i})">&times;</button>
+            </div>`;
+        });
+
+        p.innerHTML = `
+            <div class="settings-section">
+                <h3>Конверты (из таблицы расходов)</h3>
+                <div class="settings-header-row">
+                    <span class="sh-color"></span><span class="sh-name">Название</span>
+                    <span class="sh-amount">Цель</span><span class="sh-due">Дата</span><span class="sh-del"></span>
+                </div>
+                ${rows}
+                <button class="add-env-btn" onclick="ae()">+ Добавить расход</button>
+            </div>
+            <div class="settings-section">
+                <h3>Кате</h3>
+                <div class="setting-row">
+                    <label>Сумма за одну выплату</label>
+                    <input type="number" value="${cfg.wifePerPayment}" onchange="cfg.wifePerPayment=parseInt(this.value)||0;saveCfg(cfg);renderWife()">
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Себе (личные расходы)</h3>
+                <div class="setting-row">
+                    <label>Сумма за одну выплату</label>
+                    <input type="number" value="${cfg.personalPerPayment}" onchange="cfg.personalPerPayment=parseInt(this.value)||0;saveCfg(cfg);renderEnvelopes()">
+                </div>
+                <div class="setting-row" style="color:#6e7681;font-size:11px">
+                    <label>В месяц: ${fmt(cfg.personalPerPayment * 2)} \u20BD (2 выплаты)</label>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Бонусы (%)</h3>
+                <div class="setting-row"><label>Досрочно компьютер</label><input type="number" value="${cfg.bonusSplit.credit}" onchange="cfg.bonusSplit.credit=parseInt(this.value)||0;saveCfg(cfg)"></div>
+                <div class="setting-row"><label>Фин. подушка</label><input type="number" value="${cfg.bonusSplit.cushion}" onchange="cfg.bonusSplit.cushion=parseInt(this.value)||0;saveCfg(cfg)"></div>
+                <div class="setting-row"><label>Развлечения</label><input type="number" value="${cfg.bonusSplit.fun}" onchange="cfg.bonusSplit.fun=parseInt(this.value)||0;saveCfg(cfg)"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end"><button class="btn-ghost" onclick="resetCfg()">Сбросить всё</button></div>
+        `;
+    }
+
+    function ue(i,f,v) { cfg.envelopes[i][f] = (f==='target'||f==='dueDay') ? (parseInt(v)||0) : v; saveCfg(cfg); renderEnvelopes(); }
+    function re(i) { cfg.envelopes.splice(i,1); saveCfg(cfg); renderSettings(); renderEnvelopes(); }
+    function ae() { cfg.envelopes.push({ id:'env_'+Date.now(), name:'Новый', target:0, color:'#95a5a6', dueDay:0 }); saveCfg(cfg); renderSettings(); }
+    function resetCfg() {
+        if (!confirm('Сбросить настройки?')) return;
+        cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); saveCfg(cfg); renderSettings(); renderAll();
+    }
+
+    // =============================================
+    // INIT
+    // =============================================
+    function renderAll() { renderEnvelopes(); renderWife(); renderSchedule(); renderHistory(); }
+
+    async function init() {
+        try {
+            // Telegram WebApp init
+            if (window.Telegram && Telegram.WebApp) {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            }
+
+            // Load data from API
+            const data = await apiGet('load');
+
+            cfg = data.config || JSON.parse(JSON.stringify(DEFAULT_CFG));
+            if (cfg.personalPerPayment === undefined) cfg.personalPerPayment = DEFAULT_CFG.personalPerPayment;
+
+            st = data.state || freshState();
+            if (st.personalBuffer === undefined) st.personalBuffer = 0;
+            if (st.personalPaid === undefined) st.personalPaid = 0;
+            if (st.personalPayments === undefined) st.personalPayments = 0;
+            if (st.paid === undefined) st.paid = {};
+            if (st._savedWifeBuffer === undefined) st._savedWifeBuffer = 0;
+            if (st._savedPersonalBuffer === undefined) st._savedPersonalBuffer = 0;
+
+            archive = data.archive || {};
+
+            // Auto new month: archive old, keep buffers
+            if (st.month !== curMonth) {
+                cfg.envelopes.forEach(env => {
+                    if (st.paid[env.id] === undefined && env.dueDay > 0) st.paid[env.id] = true;
+                });
+                saveArchiveEntry(st.month, JSON.parse(JSON.stringify(st)));
+
+                const keepWifeBuffer = st.wifeBuffer || 0;
+                const keepPersonalBuffer = st.personalBuffer || 0;
+                st = freshState();
+                st.wifeBuffer = keepWifeBuffer;
+                st.personalBuffer = keepPersonalBuffer;
+                saveState(st);
+            }
+
+            currentMonthSt = st;
+
+            // Show app
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('appContent').classList.add('loaded');
+
+            document.getElementById('incomeInput').addEventListener('keydown', e => { if (e.key === 'Enter') distribute(); });
+            renderAll();
+
+        } catch (err) {
+            console.error('Init error:', err);
+            document.getElementById('loadingScreen').innerHTML = `
+                <div class="loading-error">
+                    <div>Не удалось загрузить данные</div>
+                    <div style="font-size:12px;color:#8b949e;margin-top:4px">${err.message}</div>
+                    <button onclick="location.reload()">Попробовать снова</button>
+                </div>`;
+        }
+    }
+
+    init();
+    </script>
+</body>
+</html>
